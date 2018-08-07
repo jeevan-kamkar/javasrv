@@ -22,6 +22,7 @@ bool BaseSapphireGenerator::Generate(const FileDescriptor* file,
 
   // Output stubs
   try {
+ //   cout<<file;
     this->GenerateSapphireStubs(context, base, file);
   } catch (std::exception ex) {
     *error = ex.what();

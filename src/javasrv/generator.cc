@@ -1,13 +1,18 @@
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/io/zero_copy_stream.h"
 #include "google/protobuf/io/printer.h"
-
+#include "google/protobuf/descriptor.h"
 #include <map>
 #include <string>
-
+#include <google/protobuf/compiler/java/java_names.h>
+#include <google/protobuf/compiler/code_generator.h>
+#include <google/protobuf/compiler/plugin.h>
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/io/zero_copy_stream.h>
 #include "generator.h"
-
+using google::protobuf::MessageOptions;
 using google::protobuf::FileDescriptor;
+using google::protobuf::FileOptions;
 using google::protobuf::MethodDescriptor;
 using google::protobuf::Descriptor;
 using google::protobuf::FieldDescriptor;
@@ -147,13 +152,6 @@ auto args = method->input_type();
 
   // Function Header
   auto ret = method->output_type();
-  //TODO: build a new class to support multiple returns?
-  if(ret->field_count() == 1) {
-    methoddict["rettype"] = GetJavaType(name, ret->field(0)); 
-  } else {
-    methoddict["rettype"] = ret->name();
-  }
-
     const FieldDescriptor* d = ret->field(0);
     methoddict["rettype"] = GetJavaType(name, d);
     methoddict["retname"] = capitalizeFirst(d->name());
@@ -172,7 +170,7 @@ out->Print("try{\n");
 out->Print("\n}catch (InvalidProtocolBufferException e) {\n");
 out->Print(methoddict," System.out.println(\"$method$ parameter deserialization failed: \" + e.getMessage());\n }\n");
 out->Print(methoddict,"$rettype$  $retname$ =");
-  out->Print(methoddict,"$method$(");
+  out->Print(methoddict,"super.$method$(");
   for(int i = 0; i < args->field_count(); ++i) {
     const FieldDescriptor* d1 = args->field(i);
     methoddict["argname"] = capitalizeFirst(d1->name());
@@ -282,30 +280,42 @@ void GenerateConstructMehtod(string name,string packagename,Printer *out){
 void GenerateConstructor(string name, Printer* out){
     StringMap condict;
     condict["classname"]= name;
-   out->Print(condict,"public $classname$_Stub(String sObjConstructorName, byte[] sObjConstructorParams,\n");
-    out->Print("\t\t\t\t\t\t\t\t              int sObjParentSObjId, int sObjId,\n");
-    out->Print("\t\t\t\t\t\t\t\t              int sObjReplicaId,Object sObjReplicaObject){\n");
+   out->Print(condict,"public $classname$_Stub(){\n");
     //Contstructor Defination needs to be added 
   
    out->Print("super();\n");
   out->Print("}\n\n");
 }
+string ServiceJavaPackage(const FileDescriptor* file) {
+  string result = google::protobuf::compiler::java::ClassName(file);
+   size_t last_dot_pos = result.find_last_of('.');
+  if (last_dot_pos != string::npos) {
+    result.resize(last_dot_pos);
+  } else {
+    result = "";
+  }
+  return result;
+}
 
 void JavaSapphireGenerator::GenerateSapphireStubs(GeneratorContext* context, string name, const FileDescriptor* file) const {
-  string temp_name=name;
+  
   name = capitalizeFirst(name);
   for(int i = 0; i < file->service_count(); ++i) {	   
     auto service = file->service(i);
     StringMap typedict;
     
-    ZeroCopyOutputStream* zcos = context->Open(service->name() + ".java");; 
+    ZeroCopyOutputStream* zcos = context->Open(service->name()+"_Stub" + ".java");; 
+   string classname= service->name();
     auto out = new Printer(zcos, '$');
  string package=file->package();
+
+    string javapackage = ServiceJavaPackage(file);
+    
+
+  typedict["javapackage"]=javapackage;
+   
+    out->Print(typedict,"package $javapackage$;\n");
        typedict["package"]=package;
-        out->Print(typedict,"package $package$;\n");
-    //TODO Package and imports
-    // string package = file->package();
-     //string package =file->Class();
     out->Print("import java.util.*;\n");
     out->Print("import com.google.protobuf.InvalidProtocolBufferException;\n");
     out->Print("import java.io.ByteArrayInputStream;\n");
@@ -314,10 +324,11 @@ out->Print("import java.io.IOException;\n");
 out->Print("import java.io.ObjectInputStream;\n");
 out->Print("import java.io.ObjectOutputStream;\n");
 out->Print("import java.util.logging.Logger;\n");
-   typedict["package_import"]="import "+temp_name+"."+name;
+name =capitalizeFirst(classname);
+   typedict["package_import"]="import "+package+"."+name+"Proto";
 	out->Print(typedict,"$package_import$;\n");
-   typedict["classname"]=name;
-    // Documentation
+   typedict["classname"]=classname;
+  out->Print(typedict,"import $javapackage$\n;");
 	  SourceLocation sl;
 	  if(service->GetSourceLocation(&sl)) {
       GenerateComments(sl.leading_comments, out);
@@ -328,16 +339,17 @@ out->Print("import java.util.logging.Logger;\n");
 
     out->Indent();
      // Each method implementation
-     out->Print(" SObjReplicaId replicaId;\n    Object sObj;\n");
-    GenerateConstructMehtod(name,temp_name+"."+name,out);
-GenerateConstructor(name,out);
+    // out->Print(" SObjReplicaId replicaId;\n");  
+      out->Print("Object sObj;\n");
+   // GenerateConstructMehtod(classname,name+"Proto",out);
+GenerateConstructor(classname,out);
     for(int j = 0; j < service->method_count(); ++j) {
-      GenerateMethod(name, out, service->method(j));
+      GenerateMethod(name+"Proto", out, service->method(j));
     }
 
     // Tuple types for returns
     for(int j = 0; j < service->method_count(); ++j) {
-      GenerateReturnType(name, out, service->method(j));
+      GenerateReturnType(classname, out, service->method(j));
     }
 
     out->Outdent();
